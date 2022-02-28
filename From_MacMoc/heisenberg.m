@@ -1,15 +1,35 @@
-function [Ms, Cs, Mx, Es, time1] = heisenberg(model,Lat,J1,J2,J3,D,Sp,L,estep,mstep,Ts,para,kb)
-%global model Lat J1 J2 J3 D Sp L estep mstep    Ts para kb
 
-Ms = zeros(1, size(Ts,2));
+% 1: ising; 2: XY; 3: heisenberg; 4: heisenberg+anisotropy_exchange(~XXZ)
+% Lattice, 'h' for hex, 't' for tri, 'c' for cub
+% J1: Fir-Nearest Strength of interaction (eV)
+% J2:Sec-Nearest Strength of interaction (eV)
+% J3:Thi-Nearest Strength of interaction (eV)
+% D:Single ion anisotropy (eV), only for heisenberg
+% A :Anisotropy Exchange Lambda (eV), only for heisenberg+anisotropy_exchange
+% Sp:Sum of Spin
+% Lattice, 'h' for hex, 't' for tri, 'c' for cub
+% L:Size of the grid
+% esteps:Steps for equilibrium*L^2 where L is grid size
+% msteps:Steps for statistic*L^2 where L is grid size
+% Ts: [80:-2:2] ; % linspace(100,0,10)  ; % Always in a descending order!
+
+% Ms:Averaged magnetisation per site per MC step
+% Cs:Specific heat, but carful that it's calculated in S not M
+% Mx:Magnetic Susceptibility, but carful that it's calculated in S not M
+% Es:Energy per site
+
+
+function [Ms, Cs, Mx, Es, time1] = heisenberg(model,Lat,J1,J2,J3,D,Sp,L,estep,mstep,Ts,para,kb)
+
+Ms = zeros(1, size(Ts,2)); %create zeros in size of Ts
 Mx = zeros(1, size(Ts,2));
 Es = zeros(1, size(Ts,2));
 Cs = zeros(1, size(Ts,2));
 const = 0.0;
 time1 = 0; time2 = 0; time3 = 0;
-newC = zeros(1,3);
+newC = zeros(1,3); %(0     0     0)
 %% Generate zero and ones matrix for hexagonal lattice
-aones = zeros(L,L,model);
+aones = zeros(L,L,model); %Matrix of (L, L, model) size
 for i = 1:L
     for j = 1:L
         if mod(i-j,2)==1
@@ -19,28 +39,30 @@ for i = 1:L
         end
     end
 end
-bar = waitbar(0,'1','Name','Monte-Carlo');
+%aonces looks like [5,5,1] matrix and repeats same 3 times
+%1     0     1     0     1
+%0     1     0     1     0
+%1     0     1     0     1
+%0     1     0     1     0
+%1     0     1     0     1
+
+bar = waitbar(0,'1','Name','Monte-Carlo'); %to shows the percentage of process
 %% Generate a spheracal(uniform) random initial configuration of theta & phi,
 %% And the corresponding Cartisian coordinates (without spin!)
+% cat :concatenate structure array containing numeric matrices into a single matrix
+% acos:acos(X) returns the Inverse Cosine (cos-1) of the elements of X in radians.
+% r3 = unifrnd(a3,b3,1,6) == r3 = 1×6 :Uniform Random Number
+%                            0.9706, 1.9572, 2.4854, 3.8003, 4.1419, 5.4218
 gridS = cat(3,acos(1-2*unifrnd(0,1,L,L)),2*pi*unifrnd(0,1,L,L));
 gridC = cat(3,sin(gridS(:,:,1)) .* cos(gridS(:,:,2)), ...
               sin(gridS(:,:,1)) .* sin(gridS(:,:,2)), ...
               cos(gridS(:,:,1))                     );
-%gridS = zeros(L,L,2);
-%gridC = cat(3,sin(gridS(:,:,1)) .* cos(gridS(:,:,2)), ...
-%              sin(gridS(:,:,1)) .* sin(gridS(:,:,2)), ...
-%              cos(gridS(:,:,1))                     );
 
 %% Evolve the system for a fixed number of steps
 for t = 1:size(Ts,2)   %change into parfor if parellel
     E0 = 0.0; E1 = 0.0; E2 = 0.0; M0 = 0.0; M1 = 0.0; M2 = 0.0;
     const = 1 / (L^2 * Ts(t) * kb) ;  % factor to be used in specific heat
-    %grid = zeros(L);                           % move into parfor if parellel
-    %grid(:,:) = initiate(:,:) ;  % deep copy?  % move into parfor if parellel
-    %gridS = cat(3,acos(1-2*unifrnd(0,1,L,L)),2*pi*unifrnd(0,1,L,L));
-    %gridC = cat(3,sin(gridS(:,:,1)) .* cos(gridS(:,:,2)), ...
-    %            sin(gridS(:,:,1)) .* sin(gridS(:,:,2)), ...
-    %            cos(gridS(:,:,1))                     );
+
     str=['Calculating: ',num2str(Ts(t)),'K' , ...
          ' (',num2str(100*t/size(Ts,2)),'%) ', ...
          num2str((size(Ts,2)-t)*time3/60), ' min left'];
@@ -57,31 +79,6 @@ for t = 1:size(Ts,2)   %change into parfor if parellel
     gridTC(1,1,:) = [sin(gridTS(1)) .* cos(gridTS(2)), ...
                      sin(gridTS(1)) .* sin(gridTS(2)), ...
                      cos(gridTS(1))];
-    
-    %% Generate a random vector in Cartesian in a half sphere around the chosen vector,
-    %% But proved to be worsening the sampling!
-    %x=[];y=[];z=[];
-    %gridTC = zeros(1,1,3);
-    %rotox  = gridS(row,col,1);
-    %rotoz  = gridS(row,col,2);
-    %theta  = acos((1+unifrnd(0,1))/2);
-    %phi    = 2*pi*unifrnd(0,1);
-    %sphe   = [sin(theta).*cos(phi), sin(theta).*sin(phi), cos(theta)] * ...
-    %         [1            0            0         ;
-    %          0            cos(rotox)  -sin(rotox);
-    %          0            sin(rotox)   cos(rotox)] * ...
-    %         [cos(rotoz)  -sin(rotoz)   0         ;
-    %          sin(rotoz)   cos(rotoz)   0         ;
-    %          0            0            1         ];
-    %for it = 1:3
-    %gridTC(1,1,it) = sphe(it);
-    %end
-    
-    % Find its Fir/Sec/Thi-Nearest neighbors,
-    % Calculate the number of neighbors of each cell
-    %object = zeros(1, 1, 3);
-    %object = gridC(row, col, :);
-    %site = [];
 
     neighbors1=[]; neighbors2=[]; neighbors3=[];
     above1 = mod(row - 1 - 1, size(gridC,1)) + 1;
